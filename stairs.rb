@@ -7,6 +7,16 @@ require 'truss.rb'
 # see any programming errors we may make.
 SKETCHUP_CONSOLE.show
 
+#global variables defining geometry
+$w= 0.08
+$h= 0.09
+$dBig = 0.001
+$dSmall = 0.0005
+$l = 0.3
+$tip = 0.02
+$tiph = 0.03
+$nbTruss=4
+
 # Add a menu item to launch our plugin.
 if( !($menu_for_copter == "created") )
 	$menu_for_copter = "created";
@@ -72,41 +82,26 @@ def report_length
 	end
 end
 
+
+def create_truss
+	t= Truss.new
+	c1 = t.addConstraint(Constraint::DISPLACEMENT,0,"3","Battery")
+	c2 = t.addConstraint(Constraint::FORCE,10,"3","EngineUp")
+	a1 = add_arm t,0,0.04,c1,c2
+	a2 = add_arm t,90,0.04,c1,c2
+	a3 = add_arm t,180,0.04,c1,c2
+	a4 = add_arm t,270,0.04,c1,c2
+	t.addStick $dSmall,a1[2],a2[2]
+	t.addStick $dSmall,a2[2],a3[2]
+	t.addStick $dSmall,a3[2],a4[2]
+	t.addStick $dSmall,a4[2],a1[2]
+    t
+end
 def create_z88
 	z88_path="D:\\ehubin\\Documents\\Dev\\z88\\"
 	newDir = Dir.new(File.join(z88_path,"test_dir"))
-	theTruss = Truss.new
-	pt1 = [0,0,0]
-	pt2 = [1,0,0]
-	pt3 = [0,1,0]
-	pt4 = [0,1,1]
-	pt5 = [1,1,0]
-	pt6 = [1,1,1]
 	
-	theTruss.addStick 3,pt1,pt3
-	theTruss.addStick 3,pt1,pt4
-	theTruss.addStick 3,pt1,pt5
-	theTruss.addStick 4,pt1,pt6
-	theTruss.addStick 4,pt2,pt3
-	theTruss.addStick 4,pt2,pt4
-	theTruss.addStick 4,pt2,pt5
-	theTruss.addStick 5,pt2,pt6
-	theTruss.addStick 5,pt3,pt4
-	theTruss.addStick 3,pt3,pt5
-	theTruss.addStick 4,pt1,pt2
-	# theTruss.addStick 2,pt3,pt6
-	 theTruss.addStick 2,pt5,pt6
-	# theTruss.addStick 2,pt4,pt6
-	theTruss.to_z88 newDir
-	
-	# Sketchup.active_model.entities.each {|elem|
-	  # t=elem.get_attribute( "rod","type")
-	  # if (t=="truss")
-		# startId=(elem.get_attribute( "rod","sx")*2.54).floor.to_s+"|"+(elem.get_attribute( "rod","sy")*2.54).floor.to_s+"|"+(elem.get_attribute( "rod","sz")*2.54).floor.to_s
-		# puts ">>#{startId}<<"
-	  # end 
-	# }
-	
+	create_truss.to_z88 newDir
 end
 
 def create_3dprint_grid
@@ -218,6 +213,39 @@ def draw_ladder line1,line2,nbTruss,diam,offset
 		_l = sp.distance ep
 		draw_stick sp, Geom::Vector3d.new(ep[0]-sp[0],ep[1]-sp[1],ep[2]-sp[2]),diam,_l,"truss"
 	end
+end
+def add_arm t,angle,dist,batteryConst,engineConst
+   rot = Geom::Transformation.rotation [0,0,0], [0,0,1], angle*(Math::PI)/180
+   
+   
+   pt =[]
+   pt[1] = Geom::Point3d.new dist,$w/2,0
+   v1 = Geom::Vector3d.new $l,-($w-$tip)/2,0
+   pt[2] = Geom::Point3d.new dist,-$w/2,0
+   v2 = Geom::Vector3d.new $l,($w-$tip)/2,0
+   pt[3] = Geom::Point3d.new dist,0,-$h
+   v3 = Geom::Vector3d.new $l,0,($h-$tiph)
+   
+   pt[1].transform! rot
+   pt[2].transform! rot
+   pt[3].transform! rot
+   v1.transform! rot
+   v2.transform! rot
+   v3.transform! rot
+   v=v3.clone
+   v.length = $l/(2*$nbTruss)
+   pt[3].offset!(v)
+   ms1 = t.addMultiStick $dBig,pt[1],$nbTruss,[v1,$l]
+   ms2 = t.addMultiStick $dBig,pt[2],$nbTruss,[v2,$l]
+   ms3 = t.addMultiStick $dBig,pt[3],$nbTruss-1,[v3,$l*(1-1.0/$nbTruss)]
+   t.connectLadder(ms1,ms2,$dSmall,0,$nbTruss)
+   t.connectTriangle(ms1,0,ms3,0,$dSmall,$nbTruss)
+   t.connectTriangle(ms2,0,ms3,0,$dSmall,$nbTruss)
+   batteryConst.addNode(ms3.getNode(0))
+   engineConst.addNode(ms1.getNode(ms1.nbElem))
+   engineConst.addNode(ms2.getNode(ms2.nbElem))
+   #return attachement nodes
+   [ ms1.getNode(0),ms2.getNode(0),ms3.getNode(0)]
 end
 
 def draw_arm angle,dist
