@@ -1,3 +1,7 @@
+#scaling factor when drawing in sketchup to avoid bugs with small items
+
+
+
 class Node
 	def initialize(pt)
 		@elems=[]
@@ -10,9 +14,10 @@ class Node
 	end
 	
 end
+
 class Constraint
-	FORCE=3
-	DISPLACEMENT=1
+	FORCE=3 unless const_defined?(:FORCE)
+	DISPLACEMENT=1 unless const_defined?(:DISPLACEMENT)
 	def initialize(type,val,dir,name)
 		@value=	val
 		raise ArgumentError,"incorrect type #{type}\n" if !(type == FORCE || type == DISPLACEMENT)
@@ -34,10 +39,35 @@ class Elem
 	@n1=n1
 	@n2=n2
 	@d=d
+	@margin1=0
+	@margin2=0
+	@me=nil
   end
+  # compute margin when intersecting another element with vect and diameter
+  def getMargin(vect,diam)
+	v= Geom::Vector3d.new vect
+	v.length = 1
+	myV = @n2.pt - @n1.pt
+	myV.length = 1
+	alpha = Math.acos( ( v%myV).abs)
+	if Math.sin(alpha) < 0.000001
+		return diam
+	else
+		return 0.5*(diam + @d*Math.cos(alpha))/Math.sin(alpha)
+	end
+  end
+  # return unit vector parallel to this element
+  def unitVect
+	v=@n2.pt - @n1.pt
+	v.length =1
+	v
+  end
+
   attr_reader :n1 
   attr_reader :n2 
-  attr_reader :d 
+  attr_reader :d
+  attr_accessor:margin1 #distance to be removed from elem at node 1
+  attr_accessor:margin2 #distance to be removed from elem at node 2
 end
 
 class MultiElem
@@ -67,12 +97,15 @@ class MultiElem
   def getElems(from=0,to=nbElem-1)
 	return @elems[from..to]
   end
+  # returns the elem at index i. when asked for elemat nbelem still returns the last elem
   def getElem idx
+	if idx == @nbElem; idx = @nbElem-1; end
 	@elems[idx]
   end
 end
 
 class Truss
+	SCALE=100 unless const_defined?(:SCALE)
 	def initialize
 		@elems = [] 
 		@nodes = []
@@ -131,7 +164,11 @@ class Truss
 		end
 		
 		fromIdx.upto(toIdx) do |i|
+		    #puts "===>#{i}\n"
 			e = Elem.new(ms1.getNode(i),ms2.getNode(i),diameter)
+			
+			e.margin1 = e.getMargin((ms1.getElem(i)).unitVect,ms1.d)
+			e.margin2 = e.getMargin((ms2.getElem(i)).unitVect,ms2.d)
 			@elems.push e
 		end
 	end
@@ -153,10 +190,16 @@ class Truss
 		end
 		
 		nbTriangles.times do |i|
+			#puts "+++>#{i}\n"
 			e = Elem.new(ms1.getNode(fromIdx1+i),ms2.getNode(fromIdx2+i),diameter)
+			e.margin1 = e.getMargin((ms1.getElem(fromIdx1+i)).unitVect,ms1.d)
+			e.margin2 = e.getMargin((ms2.getElem(fromIdx2+i)).unitVect,ms2.d)
 			@elems.push e
 			e = Elem.new(ms1.getNode(fromIdx1+i+1),ms2.getNode(fromIdx2+i),diameter)
+			e.margin1 = e.getMargin((ms1.getElem(fromIdx1+i+1)).unitVect,ms1.d)
+			e.margin2 = e.getMargin((ms2.getElem(fromIdx2+i)).unitVect,ms2.d)
 			@elems.push e
+			
 		end
 		#puts "connectTriangle() ok"
 	end
@@ -241,7 +284,7 @@ class Truss
 			f.write "\n" if ((k+1)%10 ==0 ) && (k != @elems.count-1)
 		end
 		f.write "\n"
-		fActive.write "#ELEMENTS MATERIAL 1 #{i+1} #{i+1} 2 \"Structural steel\"\n"
+		fActive.write "#ELEMENTS MATERIAL 1 #{i+1} #{i+1} 52 \"Carbon Fiber\"\n"
 		
 		@constraints.count.times do |k|
 			i=i+1
@@ -258,7 +301,20 @@ class Truss
 		
 	end
 	
-	
+	#draw the truss in sketchup
+	def draw
+		tr = Geom::Transformation.new(SCALE)
+		# draw elems first
+		@elems.each do |e|
+			p = e.n2.pt - e.n1.pt
+			v = Geom::Vector3d.new p.x,p.y,p.z
+			v.transform! tr
+			vu = Geom::Vector3d.new v
+			vu.length = e.margin1
+			p1 = e.n1.pt.offset(vu).transform!(tr)
+			draw_stick p1,v,e.d*SCALE,v.length - SCALE*(e.margin1 + e.margin2)
+		end
+	end
 	# generate all z88 input files in provided folder
 	def to_z88(folder)
 		to_z88_struct(folder)

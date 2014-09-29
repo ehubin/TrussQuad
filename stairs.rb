@@ -1,35 +1,19 @@
 # First we pull in the standard API hooks.
 require 'sketchup.rb'
 require 'fixSolid15'
-require 'truss.rb'
 
-# Show the Ruby Console at startup so we can
-# see any programming errors we may make.
-SKETCHUP_CONSOLE.show
 
 #global variables defining geometry
-$w= 0.08
-$h= 0.09
+$w= 0.1
+$h= 0.13
 $dBig = 0.001
 $dSmall = 0.0005
 $l = 0.3
-$tip = 0.02
-$tiph = 0.03
+$tip = 0.04
+$tiph = 0.06
 $nbTruss=4
 
-# Add a menu item to launch our plugin.
-if( !($menu_for_copter == "created") )
-	$menu_for_copter = "created";
-	UI.menu("Plugins").add_item("Draw copter") {
-	  draw_copter
-	}
-	UI.menu("Plugins").add_item("Create 3D print") {
-	  create_3dprint_grid
-	}
-	UI.menu("Plugins").add_item("Create Z88") {
-	  create_z88
-	}
-end
+
 
 def draw_tube pt,v,inD,extD,length
 	if inD >= extD 
@@ -68,33 +52,20 @@ def draw_stick pt,v,diam,length,type=nil,grp=nil
 	return grp
 end
 
-def report_length
-	res=Hash.new(0)
-	Sketchup.active_model.entities.each {|elem|
-	  d=elem.get_attribute( "rod","d")
-	  if (d)
-		l= elem.get_attribute( "rod","l")
-		res[d] = l+res[d]
-	  end 
-	}
-	res.keys.each do |d|
-		puts "#{d*25.4/1000}:#{res[d]*25.4/1000}"
-	end
-end
 
 
 def create_truss
 	t= Truss.new
 	c1 = t.addConstraint(Constraint::DISPLACEMENT,0,"3","Battery")
-	c2 = t.addConstraint(Constraint::FORCE,10,"3","EngineUp")
-	a1 = add_arm t,0,0.04,c1,c2
-	a2 = add_arm t,90,0.04,c1,c2
-	a3 = add_arm t,180,0.04,c1,c2
-	a4 = add_arm t,270,0.04,c1,c2
-	t.addStick $dSmall,a1[2],a2[2]
-	t.addStick $dSmall,a2[2],a3[2]
-	t.addStick $dSmall,a3[2],a4[2]
-	t.addStick $dSmall,a4[2],a1[2]
+	c2 = nil #t.addConstraint(Constraint::FORCE,40,"3","EngineUp")
+	a1 = add_arm t,0,$w/2,c1,c2
+	a2 = add_arm t,90,$w/2,c1,c2
+	a3 = add_arm t,180,$w/2,c1,c2
+	a4 = add_arm t,270,$w/2,c1,c2
+	t.addStick $dBig,a1[2],a2[2]
+	t.addStick $dBig,a2[2],a3[2]
+	t.addStick $dBig,a3[2],a4[2]
+	t.addStick $dBig,a4[2],a1[2]
     t
 end
 def create_z88
@@ -238,12 +209,17 @@ def add_arm t,angle,dist,batteryConst,engineConst
    ms1 = t.addMultiStick $dBig,pt[1],$nbTruss,[v1,$l]
    ms2 = t.addMultiStick $dBig,pt[2],$nbTruss,[v2,$l]
    ms3 = t.addMultiStick $dBig,pt[3],$nbTruss-1,[v3,$l*(1-1.0/$nbTruss)]
-   t.connectLadder(ms1,ms2,$dSmall,0,$nbTruss)
+   t.connectLadder(ms1,ms2,$dSmall,1,$nbTruss)
+   t.connectLadder(ms1,ms2,$dBig,0,0) #Big rod on first ladder
    t.connectTriangle(ms1,0,ms3,0,$dSmall,$nbTruss)
    t.connectTriangle(ms2,0,ms3,0,$dSmall,$nbTruss)
    batteryConst.addNode(ms3.getNode(0))
-   engineConst.addNode(ms1.getNode(ms1.nbElem))
-   engineConst.addNode(ms2.getNode(ms2.nbElem))
+   e1 = t.addConstraint(Constraint::FORCE,40,"3","EngineUp#{angle}1")
+   e1.addNode(ms1.getNode(ms1.nbElem))
+   e2 = t.addConstraint(Constraint::FORCE,40,"3","EngineUp#{angle}2")
+   e2.addNode(ms2.getNode(ms2.nbElem))
+   #engineConst.addNode(ms1.getNode(ms1.nbElem))
+   #engineConst.addNode(ms2.getNode(ms2.nbElem))
    #return attachement nodes
    [ ms1.getNode(0),ms2.getNode(0),ms3.getNode(0)]
 end
@@ -427,10 +403,11 @@ def draw_copter
   Sketchup.active_model.options["UnitsOptions"]["LengthUnit"]=2  
   Sketchup.active_model.entities.clear!
 
-  draw_arm 0,40.m
+  #draw_arm 0,40.m
   #draw_arm 90,40.m
   #draw_arm 180,40.m
   #draw_arm 270,40.m  
+  create_truss.draw
   end
  def myTrim (v1,v2)
 	res = v1.trim(v2)
