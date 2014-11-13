@@ -4,14 +4,14 @@ require 'fixSolid15'
 
 
 #global variables defining geometry
-$w= 0.1
-$h= 0.13
-$dBig = 0.001
-$dSmall = 0.0005
-$l = 0.3
-$tip = 0.04
-$tiph = 0.06
-$nbTruss=4
+$w= 0.1.m
+$h= 0.13.m
+$dBig = 0.001.m
+$dSmall = 0.0005.m
+$l = 0.3.m
+$tip = 0.04.m
+$tiph = 0.06.m
+$nbTruss=5
 
 
 
@@ -56,7 +56,7 @@ end
 
 def create_truss
 	t= Truss.new
-	c1 = t.addConstraint(Constraint::DISPLACEMENT,0,"3","Battery")
+	c1 = t.addConstraint(Constraint::DISPLACEMENT,0,"123","Battery")
 	c2 = nil #t.addConstraint(Constraint::FORCE,40,"3","EngineUp")
 	a1 = add_arm t,0,$w/2,c1,c2
 	a2 = add_arm t,90,$w/2,c1,c2
@@ -66,13 +66,20 @@ def create_truss
 	t.addStick $dBig,a2[2],a3[2]
 	t.addStick $dBig,a3[2],a4[2]
 	t.addStick $dBig,a4[2],a1[2]
+	t.addStick $dBig,a1[0],a1[1]
+	t.addStick $dBig,a2[0],a2[1]
+	t.addStick $dBig,a3[0],a3[1]
+	t.addStick $dBig,a4[0],a4[1]
     t
 end
 def create_z88
 	z88_path="D:\\ehubin\\Documents\\Dev\\z88\\"
-	newDir = Dir.new(File.join(z88_path,"test_dir"))
-	
-	create_truss.to_z88 newDir
+	dirpath=File.join(z88_path,"test_")
+	if !Dir.exists?(dirpath)
+		Dir.mkdir(dirpath)
+	end
+	newDir = Dir.new(dirpath)
+	create_truss.to_z88 newDir, Dir.new(z88_path)
 end
 
 def create_3dprint_grid
@@ -207,10 +214,13 @@ def add_arm t,angle,dist,batteryConst,engineConst
    v.length = $l/(2*$nbTruss)
    pt[3].offset!(v)
    ms1 = t.addMultiStick $dBig,pt[1],$nbTruss,[v1,$l]
+   ms1.addStick $dBig,$dBig*2,t
    ms2 = t.addMultiStick $dBig,pt[2],$nbTruss,[v2,$l]
+   ms2.addStick $dBig,$dBig*2,t
    ms3 = t.addMultiStick $dBig,pt[3],$nbTruss-1,[v3,$l*(1-1.0/$nbTruss)]
+   ms3.addStick $dBig,$dBig*2,t
    t.connectLadder(ms1,ms2,$dSmall,1,$nbTruss)
-   t.connectLadder(ms1,ms2,$dBig,0,0) #Big rod on first ladder
+   #t.connectLadder(ms1,ms2,$dBig,0,0) #Big rod on first ladder
    t.connectTriangle(ms1,0,ms3,0,$dSmall,$nbTruss)
    t.connectTriangle(ms2,0,ms3,0,$dSmall,$nbTruss)
    batteryConst.addNode(ms3.getNode(0))
@@ -407,7 +417,17 @@ def draw_copter
   #draw_arm 90,40.m
   #draw_arm 180,40.m
   #draw_arm 270,40.m  
-  create_truss.draw
+  t = create_truss
+  t.draw
+  lengthReport = t.getLength
+  weight = 0 
+  puts lengthReport
+  lengthReport.each do |d,l|
+	weight += 3.1415*l*(d.to_f)*(d.to_f)*1500000/4
+	end
+  puts "Estimated CF weight #{weight} gr\n"
+  puts "Connectors total volume #{2.54*2.54*2.54*t.getConnectorVolume} cm3\n"
+  puts "Connectors total weight #{2.54*2.54*2.54*0.45*t.getConnectorVolume} gr\n"
   end
  def myTrim (v1,v2)
 	res = v1.trim(v2)
